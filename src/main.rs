@@ -22,9 +22,9 @@ pub type HttpClient = Client<HttpConnector, Full<Bytes>>;
 #[derive(Parser)]
 #[command(name = "codex-local", version, about = "一键启动 llama.cpp + 转换层 + Codex（本地模型）")]
 struct Cli {
-    /// 模型：路径、文件名或简写（在 <root>/models 下搜索 .gguf）
-    #[arg(short, long, default_value = "google_gemma-4-E4B-it-Q8_0.gguf")]
-    model: String,
+    /// 模型：路径、文件名或简写（在 <root>/models 下搜索 .gguf）。不指定则列出可选模型
+    #[arg(short, long)]
+    model: Option<String>,
 
     /// llama.cpp 模型别名（默认取文件名第一个 '-' 之前）
     #[arg(long)]
@@ -91,7 +91,33 @@ async fn main() -> Result<()> {
         }
     };
 
-    let model_path = llama::resolve_model(&root, &cli.model)?;
+    let model_arg = match cli.model.clone() {
+        Some(model) => model,
+        None => {
+            let models = llama::available_models(&root);
+            let dir = root.join("models");
+            if models.is_empty() {
+                bail!(
+                    "{} 里没有 .gguf 模型文件。把模型放进去，或用 -m 指定任意路径的 .gguf。",
+                    dir.display()
+                );
+            }
+            println!("未指定模型，{} 下可用：", dir.display());
+            for (index, path) in models.iter().enumerate() {
+                println!(
+                    "{:>3}. {}",
+                    index + 1,
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                );
+            }
+            let example = models[0].file_name().unwrap_or_default().to_string_lossy().to_string();
+            println!();
+            println!("用 -m 指定，例如：codex-local -m {example}");
+            std::process::exit(1);
+        }
+    };
+
+    let model_path = llama::resolve_model(&root, &model_arg)?;
     let alias = cli
         .alias
         .unwrap_or_else(|| llama::alias_from_path(&model_path));

@@ -40,10 +40,16 @@ Running it needs only `bin/codex-local`; no node required.
 
 ## 3. Quick start
 
-Run this from the repository root:
+Put a `.gguf` into `models/`, then run this from the repository root:
 
 ```bash
-./bin/codex-local
+./bin/codex-local -m <model-name>
+```
+
+Not sure what is available? List first:
+
+```bash
+./bin/codex-local -l
 ```
 
 It prints three stages and then hands over to Codex:
@@ -70,7 +76,7 @@ codex-local [options] [codex args...]
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `-m, --model <path\|shorthand>` | `google_gemma-4-E4B-it-Q8_0.gguf` | Model: absolute path, filename, or shorthand |
+| `-m, --model <path\|shorthand>` | none | Model: absolute path, filename, or shorthand; lists available models when omitted |
 | `--alias <name>` | filename before the first `-` | llama.cpp alias, also passed to Codex as its model |
 | `--llama-port <port>` | `8001` | Port llama.cpp listens on |
 | `--shim-port <port>` | `8010` | Port the in-process shim listens on |
@@ -96,6 +102,9 @@ First match wins:
 
 If steps 3 or 4 match more than one file, the tool lists the candidates and exits instead of
 guessing.
+
+Omitting `-m` does not guess either: the tool lists every `.gguf` under `models/` and exits
+non-zero. An empty `models/` reports that there are no model files.
 
 ```bash
 ./bin/codex-local -m gemma-3-27b
@@ -233,6 +242,7 @@ kill $(cat run/llama-server.pid)    # run from the repository root
 | `Not inside a trusted directory…` | The directory is not a git repository; add `--skip-git-repo-check` (see above) |
 | `llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失` | The running instance was not started by this tool, so it refuses to kill it. Stop it manually and retry |
 | `无法停止正在运行的 llama.cpp` | SIGTERM was sent but it did not exit within 30 seconds; handle it manually and retry |
+| `… 里没有 .gguf 模型文件`, or `找不到模型 'xxx'，而且 … 里也没有 .gguf 文件` | `models/` is empty. Drop a model in, or pass `-m /absolute/path/xxx.gguf` |
 | `Unknown model google_gemma is used…` | Codex has no metadata for this model and falls back; harmless |
 | Codex reports `'type' of tool must be 'function'` | The request bypassed the shim — check whether something connected straight to llama.cpp |
 
@@ -257,3 +267,7 @@ none of the `node_repl` / `cua_repl` MCP tools. Editing files happens through `e
 Performance reference (MacBook, Gemma 4 E4B Q8_0): about 39 tok/s generation and 122 tok/s
 prefill, while the Codex system prompt is roughly 9k tokens — so expect each turn to start
 around twenty to thirty seconds. Context is sized from the model's 131072.
+
+## 12. License
+
+MIT — see [LICENSE](LICENSE) in the repository root.

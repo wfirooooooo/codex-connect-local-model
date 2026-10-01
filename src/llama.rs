@@ -53,6 +53,12 @@ pub fn resolve_model(root: &Path, arg: &str) -> Result<PathBuf> {
     }
 
     let all = glob(&models, |name| name.ends_with(".gguf"));
+    if all.is_empty() {
+        bail!(
+            "找不到模型 '{arg}'，而且 {} 里也没有 .gguf 文件。",
+            models.display()
+        );
+    }
     bail!(
         "找不到模型 '{arg}'，models/ 目录下的 .gguf：\n{}",
         format_list(all)
@@ -64,10 +70,18 @@ pub fn alias_from_path(path: &Path) -> String {
     stem.split('-').next().unwrap_or(stem).to_string()
 }
 
+pub fn available_models(root: &Path) -> Vec<PathBuf> {
+    glob(&root.join("models"), |name| name.ends_with(".gguf"))
+}
+
 pub fn list_models(root: &Path) {
-    let models = root.join("models");
-    println!("模型目录：{}", models.display());
-    for (index, path) in glob(&models, |name| name.ends_with(".gguf")).into_iter().enumerate() {
+    let models = available_models(root);
+    if models.is_empty() {
+        println!("{} 里没有 .gguf 模型文件", root.join("models").display());
+        return;
+    }
+    println!("模型目录：{}", root.join("models").display());
+    for (index, path) in models.iter().enumerate() {
         println!("{:>3}. {}", index + 1, path.file_name().unwrap_or_default().to_string_lossy());
     }
 }

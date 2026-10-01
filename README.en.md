@@ -17,16 +17,16 @@ cp target/release/codex-local bin/
 ## Usage
 
 ```bash
-./bin/codex-local                          # default model
-./bin/codex-local -m gemma-3-27b           # switch model (shorthand / filename / path)
-./bin/codex-local exec "run the tests"     # everything else is forwarded to codex
-./bin/codex-local -l                       # list .gguf files under models/
+./bin/codex-local                                       # no model: list what is under models/
+./bin/codex-local -m gemma-3-27b                        # pick a model (shorthand / filename / path)
+./bin/codex-local -m gemma-3-27b exec "run the tests"   # everything else is forwarded to codex
+./bin/codex-local -l                                    # list .gguf files under models/
 ```
 
 Options:
 
 ```
--m, --model <path|shorthand>   default google_gemma-4-E4B-it-Q8_0.gguf
+-m, --model <path|shorthand>   lists available models and exits when omitted
     --alias <name>             llama.cpp model alias (default: filename before the first '-')
     --llama-port <port>        default 8001
     --shim-port <port>         default 8010
@@ -71,3 +71,7 @@ repository and the arguments contain `exec`, the tool prints a hint about
 
 Environment variables: `CODEX_LOCAL_ROOT` (project root), `LLAMA_SERVER_BIN` (llama-server
 path), `LLAMA_WAIT` (readiness timeout in seconds, default 180).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

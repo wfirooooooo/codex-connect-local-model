@@ -27,10 +27,16 @@ cp target/release/codex-local bin/
 
 ## 3. 快速开始
 
-在仓库根目录执行：
+先把 `.gguf` 放进 `models/`，然后在仓库根目录执行：
 
 ```bash
-./bin/codex-local
+./bin/codex-local -m <模型名>
+```
+
+不确定有哪些模型，先列一下：
+
+```bash
+./bin/codex-local -l
 ```
 
 它会依次输出三个阶段，然后进入 Codex 交互界面：
@@ -57,7 +63,7 @@ codex-local [选项] [codex 参数...]
 
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `-m, --model <路径\|简写>` | `google_gemma-4-E4B-it-Q8_0.gguf` | 模型。支持绝对路径、文件名、简写 |
+| `-m, --model <路径\|简写>` | 无 | 模型。支持绝对路径、文件名、简写；不指定则列出可选模型 |
 | `--alias <名字>` | 文件名第一个 `-` 之前 | llama.cpp 的模型别名，也是传给 Codex 的 model |
 | `--llama-port <端口>` | `8001` | llama.cpp 监听端口 |
 | `--shim-port <端口>` | `8010` | 进程内转换层监听端口 |
@@ -80,6 +86,8 @@ codex-local [选项] [codex 参数...]
 4. 子串匹配 `*<参数>*.gguf`
 
 第 3、4 步若命中多个文件，会列出候选并退出，不猜。
+
+不传 `-m` 时同样不猜：工具会列出 `models/` 下所有 `.gguf` 并以非零状态退出。`models/` 为空时，直接提示没有模型文件。
 
 ```bash
 ./bin/codex-local -m gemma-3-27b
@@ -194,6 +202,7 @@ kill $(cat run/llama-server.pid)    # 在仓库根目录执行
 | `Not inside a trusted directory…` | 目录不是 git 仓库，加 `--skip-git-repo-check`（见上一节） |
 | `llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失` | 现有实例不是本工具启动的，工具拒绝擅自杀。手动停掉后再跑 |
 | `无法停止正在运行的 llama.cpp` | 发了 SIGTERM 但 30 秒内没退出，手动处理后重试 |
+| `… 里没有 .gguf 模型文件`，或 `找不到模型 'xxx'，而且 … 里也没有 .gguf 文件` | `models/` 是空的。把模型放进去，或用 `-m /绝对路径/xxx.gguf` |
 | `Unknown model google_gemma is used…` | Codex 没有该模型的元数据，走 fallback，不影响使用 |
 | Codex 报 `'type' of tool must be 'function'` | 说明请求没经过转换层，检查是不是绕开本工具直接连了 llama.cpp |
 
@@ -213,3 +222,7 @@ kill $(cat run/llama-server.pid)    # 在仓库根目录执行
 被剔除的工具是真实代价：本地模型没有联网搜索、没有子智能体、也没有 `node_repl` / `cua_repl` 这类 MCP 工具，改文件只能走 `exec_command`（也就是 shell）。
 
 性能参考（MacBook，Gemma 4 E4B Q8_0）：生成约 39 tok/s、预填约 122 tok/s，而 Codex 的系统提示约 9k tokens，所以每轮对话起步大概二三十秒。上下文按模型的 131072 计算。
+
+## 12. 许可
+
+MIT License，见仓库根目录的 [LICENSE](LICENSE)。
