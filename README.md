@@ -1,71 +1,79 @@
 # codex-local
 
-一条命令启动本地模型并进入 Codex：起 llama.cpp、起进程内转换层、再拉起 Codex。
+**English** | [中文](README.zh-CN.md)
 
-完整说明见 [MANUAL.md](MANUAL.md)。
+One command to run a local model and drop into Codex: it starts llama.cpp, starts the
+in-process shim, then launches Codex.
 
-English: [README.en.md](README.en.md) / [MANUAL.en.md](MANUAL.en.md)
+Full documentation: [MANUAL.md](MANUAL.md).
 
-## 构建
+## Build
 
-在仓库根目录执行：
+Run these from the repository root:
 
 ```bash
 cargo build --release
 cp target/release/codex-local bin/
 ```
 
-## 用法
+## Usage
 
 ```bash
-./bin/codex-local                                       # 不指定模型：列出 models/ 下可用的模型
-./bin/codex-local -m gemma-3-27b                        # 指定模型（简写/文件名/路径）
-./bin/codex-local -m gemma-3-27b exec "run the tests"   # 其余参数透传给 codex
-./bin/codex-local -l                                    # 列出 models/ 下的 .gguf
+./bin/codex-local                                       # no model: list what is under models/
+./bin/codex-local -m gemma-3-27b                        # pick a model (shorthand / filename / path)
+./bin/codex-local -m gemma-3-27b exec "run the tests"   # everything else is forwarded to codex
+./bin/codex-local -l                                    # list .gguf files under models/
 ```
 
-选项：
+Options:
 
 ```
--m, --model <路径|简写>   不指定则列出 models/ 下的模型并退出
-    --alias <名字>        llama.cpp 模型别名（默认文件名第一个 '-' 之前）
-    --llama-port <端口>   默认 8001
-    --shim-port <端口>    默认 8010
-    --cd <目录>          让 Codex 以该目录作为工作根（映射到 codex 的 -C）
-    --ctx-size <n>        透传给 llama-server
-    --n-gpu-layers <n>    透传给 llama-server
-    --stop-after          Codex 退出后关闭本次启动的模型
+-m, --model <path|shorthand>   lists available models and exits when omitted
+    --alias <name>             llama.cpp model alias (default: filename before the first '-')
+    --llama-port <port>        default 8001
+    --shim-port <port>         default 8010
+    --cd <dir>                 working root for Codex (maps to codex's -C)
+    --ctx-size <n>             forwarded to llama-server
+    --n-gpu-layers <n>         forwarded to llama-server
+    --stop-after               stop the model started by this run when Codex exits
 -l, --list
 ```
 
-## 目录
+## Layout
 
-- `src/` 源码（main/llama/shim/codex 四个模块）
-- `bin/` 构建产物 `codex-local`
-- `models/` 模型文件（当前是指向原 gguf 的软链）
-- `logs/` `llama_server.log`
-- `run/` 运行期 pid 文件
-- `config/` 可选（暂未使用，留给 codex profile）
+- `src/` source (main / llama / shim / codex)
+- `bin/` build output `codex-local`
+- `models/` model files (currently a symlink to the original gguf)
+- `logs/` `llama_server.log`, `shim.log`
+- `run/` runtime pid files
+- `config/` reserved (not used yet)
 
-## 行为说明
+## Behavior
 
-- 模型身份用 `/props` 的 `model_path` 绝对路径判断，不用别名，避免同名别名误判。
-- 默认 Codex 退出后 llama.cpp 继续在后台运行；`--stop-after` 则关闭本次启动的实例。转换层随本进程退出，无需单独管理。
-- 换模型时只终止「本工具启动且 pid 文件能对上」的实例；陌生进程会拒绝操作并提示手动停止。
+- Model identity is decided by the absolute `model_path` from `/props`, not by alias —
+  aliases collide when two files share a prefix.
+- llama.cpp keeps running in the background after Codex exits; `--stop-after` shuts down the
+  instance this run started. The shim lives inside the launcher process and dies with it.
+- When switching models, only an instance started by this tool (matching pid file) is
+  terminated. A foreign process is left alone with a message asking you to stop it.
 
-## 关于「Codex 信任的目录」
+## "The directory Codex trusts"
 
-Codex 判断的是工作目录本身，`~/.codex/config.toml` 里的 `[projects] trust_level` 不能替代这个判断：
+Codex looks at the working directory itself; `[projects] trust_level = "trusted"` in
+`~/.codex/config.toml` does not replace that check:
 
 ```bash
-./bin/codex-local --cd /path/to/project          # 指定工作根
-./bin/codex-local --cd /path/to/project exec --skip-git-repo-check "..."   # 非 git 目录
+./bin/codex-local --cd /path/to/project          # set the working root
+./bin/codex-local --cd /path/to/project exec --skip-git-repo-check "..."   # non-git directory
 ```
 
-不指定 `--cd` 时用的是当前目录。目录不在 git 仓库内且参数里带 `exec` 时，工具会提示需要 `--skip-git-repo-check`；若已带上该参数则不提示。
+Without `--cd`, the current directory is used. When the directory is not inside a git
+repository and the arguments contain `exec`, the tool prints a hint about
+`--skip-git-repo-check`; it stays quiet if you already passed that flag.
 
-环境变量：`CODEX_LOCAL_ROOT`（项目根）、`LLAMA_SERVER_BIN`（llama-server 路径）、`LLAMA_WAIT`（就绪等待秒数，默认 180）。
+Environment variables: `CODEX_LOCAL_ROOT` (project root), `LLAMA_SERVER_BIN` (llama-server
+path), `LLAMA_WAIT` (readiness timeout in seconds, default 180).
 
-## 许可
+## License
 
-MIT License，见 [LICENSE](LICENSE)。
+MIT — see [LICENSE](LICENSE).

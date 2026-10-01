@@ -1,45 +1,58 @@
-# codex-local 使用手册
+# codex-local Manual
 
-用一条命令，让 Codex CLI 跑在本机 llama.cpp 加载的模型上。
+**English** | [中文](MANUAL.zh-CN.md)
 
-English version: [MANUAL.en.md](MANUAL.en.md)
+Run Codex CLI against a model served by your local llama.cpp, with a single command.
 
-## 1. 它解决什么问题
+> Note: the tool currently prints its progress and error messages in Chinese. This manual
+> quotes the exact strings so you can search for them, and describes what each one means.
 
-手动跑通一次「本地模型 + Codex」原本要三步：起 `llama-server`、起转换层、起 Codex。而且中间有两个坑：
+## 1. What it solves
 
-一是 Codex 较新版本废弃了 `wire_api = "chat"`，自定义 provider 只能用 `responses`，而 llama.cpp 的 `/v1/responses` 只接受 `type = "function"` 的工具定义；Codex 每次请求还会附上 `web_search`、`namespace`（多智能体与 MCP 工具组）、`custom` 等类型，llama.cpp 会直接返回 400 `'type' of tool must be 'function'`。
+Getting "local model + Codex" running by hand takes three steps: start `llama-server`,
+start a shim, start Codex. Two traps sit in the middle.
 
-二是判断「llama.cpp 现在装的是哪个模型」不能靠别名，因为别名取文件名第一个 `-` 之前的部分，`google_gemma-4-E4B-it-Q8_0.gguf` 和 `google_gemma-3-27b-it-Q4.gguf` 会撞成同一个名字。
+First, recent Codex versions removed `wire_api = "chat"` for custom providers — only
+`responses` is accepted. But llama.cpp's `/v1/responses` only accepts tool definitions of
+`type = "function"`, while Codex sends `web_search`, `namespace` (multi-agent and MCP tool
+groups) and `custom` entries as well. llama.cpp answers 400
+`'type' of tool must be 'function'`.
 
-`codex-local` 把三件事合进一个进程，用 `/props` 的 `model_path` 做模型身份判断，并在转发的路上剔掉 llama.cpp 不认的工具定义。
+Second, you cannot tell which model llama.cpp has loaded by alias, because the alias is the
+filename up to the first `-`. `google_gemma-4-E4B-it-Q8_0.gguf` and
+`google_gemma-3-27b-it-Q4.gguf` both become `google_gemma`.
 
-## 2. 构建
+`codex-local` merges the three steps into one process, decides model identity from the
+absolute `model_path` in `/props`, and strips the tool definitions llama.cpp rejects while
+forwarding.
 
-在仓库根目录执行：
+## 2. Build
+
+Run these from the repository root:
 
 ```bash
 cargo build --release
 cp target/release/codex-local bin/
 ```
 
-依赖 tokio / hyper / hyper-util / http-body-util / serde_json / clap / libc / anyhow。运行只需要 `bin/codex-local`，不依赖 node。
+Depends on tokio / hyper / hyper-util / http-body-util / serde_json / clap / libc / anyhow.
+Running it needs only `bin/codex-local`; no node required.
 
-## 3. 快速开始
+## 3. Quick start
 
-先把 `.gguf` 放进 `models/`，然后在仓库根目录执行：
+Put a `.gguf` into `models/`, then run this from the repository root:
 
 ```bash
-./bin/codex-local -m <模型名>
+./bin/codex-local -m <model-name>
 ```
 
-不确定有哪些模型，先列一下：
+Not sure what is available? List first:
 
 ```bash
 ./bin/codex-local -l
 ```
 
-它会依次输出三个阶段，然后进入 Codex 交互界面：
+It prints three stages and then hands over to Codex:
 
 ```
 [1/3] 启动 llama.cpp：google_gemma ...
@@ -48,46 +61,50 @@ cp target/release/codex-local bin/
 [3/3] 启动 Codex（model=google_gemma）
 ```
 
-在项目目录里用：
+From inside a project:
 
 ```bash
 cd ~/code/my-project
 /path/to/codex-connect-local-model/bin/codex-local
 ```
 
-## 4. 命令参考
+## 4. Command reference
 
 ```
-codex-local [选项] [codex 参数...]
+codex-local [options] [codex args...]
 ```
 
-| 选项 | 默认值 | 说明 |
+| Option | Default | Description |
 | --- | --- | --- |
-| `-m, --model <路径\|简写>` | 无 | 模型。支持绝对路径、文件名、简写；不指定则列出可选模型 |
-| `--alias <名字>` | 文件名第一个 `-` 之前 | llama.cpp 的模型别名，也是传给 Codex 的 model |
-| `--llama-port <端口>` | `8001` | llama.cpp 监听端口 |
-| `--shim-port <端口>` | `8010` | 进程内转换层监听端口 |
-| `--cd <目录>` | 当前目录 | Codex 的工作根，映射到 codex 的 `-C` |
-| `--ctx-size <n>` | 用 llama.cpp 默认 | 透传 `--ctx-size` 给 llama-server |
-| `--n-gpu-layers <n>` | 用 llama.cpp 默认 | 透传 `--n-gpu-layers` 给 llama-server |
-| `--stop-after` | 关 | Codex 退出后关闭「本次启动」的 llama.cpp |
-| `-l, --list` | | 列出 `models/` 下所有 `.gguf` 后退出 |
-| `-h, --help` / `-V, --version` | | 帮助与版本 |
+| `-m, --model <path\|shorthand>` | none | Model: absolute path, filename, or shorthand; lists available models when omitted |
+| `--alias <name>` | filename before the first `-` | llama.cpp alias, also passed to Codex as its model |
+| `--llama-port <port>` | `8001` | Port llama.cpp listens on |
+| `--shim-port <port>` | `8010` | Port the in-process shim listens on |
+| `--cd <dir>` | current directory | Working root for Codex (maps to codex's `-C`) |
+| `--ctx-size <n>` | llama.cpp default | Forwards `--ctx-size` to llama-server |
+| `--n-gpu-layers <n>` | llama.cpp default | Forwards `--n-gpu-layers` to llama-server |
+| `--stop-after` | off | Stop the llama.cpp started *by this run* when Codex exits |
+| `-l, --list` | | List every `.gguf` under `models/` and exit |
+| `-h, --help` / `-V, --version` | | Help and version |
 
-`--ctx-size` 和 `--n-gpu-layers` 只在本次真的启动了 llama-server 时才生效；复用已在运行的实例时会被忽略（换这两个参数需要先停掉现有实例）。
+`--ctx-size` and `--n-gpu-layers` only apply when this run actually launches llama-server.
+They are ignored when an already-loaded instance is reused — stop that instance first if you
+want to change them.
 
-### 模型名怎么写
+### How a model name is resolved
 
-解析顺序，命中即停：
+First match wins:
 
-1. 参数本身是存在的文件路径
-2. `<项目根>/models/<参数>` 存在
-3. 前缀匹配 `<参数>*.gguf`
-4. 子串匹配 `*<参数>*.gguf`
+1. the argument is an existing file path
+2. `<root>/models/<argument>` exists
+3. prefix match `<argument>*.gguf`
+4. substring match `*<argument>*.gguf`
 
-第 3、4 步若命中多个文件，会列出候选并退出，不猜。
+If steps 3 or 4 match more than one file, the tool lists the candidates and exits instead of
+guessing.
 
-不传 `-m` 时同样不猜：工具会列出 `models/` 下所有 `.gguf` 并以非零状态退出。`models/` 为空时，直接提示没有模型文件。
+Omitting `-m` does not guess either: the tool lists every `.gguf` under `models/` and exits
+non-zero. An empty `models/` reports that there are no model files.
 
 ```bash
 ./bin/codex-local -m gemma-3-27b
@@ -95,134 +112,162 @@ codex-local [选项] [codex 参数...]
 ./bin/codex-local -m /Volumes/models/qwen3-32b-Q4.gguf
 ```
 
-### 参数怎么传给 codex
+### Passing arguments to codex
 
-从第一个不属于本工具的选项开始，后面的内容原样交给 codex：
+From the first argument this tool does not recognize, everything is handed to codex verbatim:
 
 ```bash
 ./bin/codex-local exec "run the tests"          # codex exec "run the tests"
 ./bin/codex-local -c model_reasoning_effort=low # codex -c model_reasoning_effort=low
-./bin/codex-local -- "修一下这个 bug"            # -- 强制分隔
+./bin/codex-local -- "fix this bug"             # -- forces the split
 ```
 
-本工具自己的选项必须写在最前面，一旦出现不认识的参数，后面就全部归 codex。
+The tool's own options must come first. Once an unknown argument appears, everything after it
+belongs to codex.
 
-## 5. 环境变量
+## 5. Environment variables
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `CODEX_LOCAL_ROOT` | 可执行文件所在目录的上一级 | 项目根，决定 `models/`、`logs/`、`run/` 的位置 |
-| `LLAMA_SERVER_BIN` | `llama-server` | llama-server 可执行文件位置或名字 |
-| `LLAMA_WAIT` | `180` | 等待 llama.cpp 就绪的秒数 |
+| `CODEX_LOCAL_ROOT` | parent of the executable's directory | Project root; decides where `models/`, `logs/` and `run/` live |
+| `LLAMA_SERVER_BIN` | `llama-server` | Path or name of the llama-server executable |
+| `LLAMA_WAIT` | `180` | Seconds to wait for llama.cpp to become ready |
 
-## 6. 目录结构
+## 6. Layout
 
 ```
 codex-connect-local-model/
 ├── src/            main.rs / llama.rs / shim.rs / codex.rs
-├── bin/            codex-local（构建产物）
-├── models/         .gguf 模型文件
-├── logs/           llama_server.log、shim.log
+├── bin/            codex-local (build output)
+├── models/         .gguf model files
+├── logs/           llama_server.log, shim.log
 ├── run/            llama-server.pid
-├── config/         预留
+├── config/         reserved
 └── Cargo.toml
 ```
 
-`models/` 放 `.gguf` 模型文件，可以是指向模型库的软链，也可以直接把文件放进来（`.gitignore` 已排除 `models/*.gguf`，模型不会进仓库）。`logs/shim.log` 会逐次记录被剔除的工具名，排查用。
+`models/` is where `.gguf` files live — either symlinks into a model store or the files
+themselves (`.gitignore` excludes `models/*.gguf`, so models never enter the repository).
+`logs/shim.log` records the tool names dropped on each request, which is handy when
+debugging.
 
-## 7. 工作流程
+## 7. How it works
 
-第一阶段是模型。先探测 `http://127.0.0.1:<llama-port>`，用 `/props` 返回的 `model_path` 和目标文件（已做软链解析）比对：一致就直接复用；不一致且 pid 文件里的进程还活着，就发 SIGTERM 停掉再起新的；llama.cpp 没在跑就直接拉起。然后轮询 `/v1/models`，每秒一次，直到就绪或超时。
+Stage one is the model. The tool probes `http://127.0.0.1:<llama-port>` and compares the
+`model_path` from `/props` against the target file (with symlinks resolved). A match means it
+reuses the running instance. A mismatch with a live pid file means it sends SIGTERM and
+starts the new model. Nothing running means it launches llama-server directly. It then polls
+`/v1/models` once per second until the server is ready or the timeout expires.
 
-第二阶段是转换层。它跑在本进程内，绑定 `--shim-port`，把 `/v1/responses` 请求里非 `function` 类型的工具定义去掉后转发给 llama.cpp，其余请求原样透传，响应以流式回传，所以 SSE 不受影响。
+Stage two is the shim. It runs inside this process, binds `--shim-port`, removes tool
+definitions that are not `type: "function"` from `/v1/responses` requests, and forwards them
+to llama.cpp. Every other request is passed through untouched, and responses stream back, so
+SSE is unaffected.
 
-第三阶段是 Codex。以子进程方式启动，注入这些配置：
+Stage three is Codex, launched as a child process with these overrides injected:
 
 ```
 -c model_provider=llama_cpp
 -c model_providers.llama_cpp.base_url=http://127.0.0.1:<shim-port>/v1
 -c model_providers.llama_cpp.wire_api=responses
--c model=<别名>
+-c model=<alias>
 ```
 
-所以它不依赖 `~/.codex/llama.config.toml`，端口或模型变了也不用改配置文件。
+That is why it does not depend on `~/.codex/llama.config.toml` and why changing ports or
+models needs no config edits.
 
-进程模型上，`codex-local` 本身就是转换层，同时是 Codex 的父进程。Ctrl-C 由终端发给整个前台进程组，Codex 直接收到，父进程吞掉信号以免先于 Codex 退出；`kill <codex-local>` 只发给父进程，所以父进程会把 SIGTERM 转发给 Codex。Codex 退出后，父进程原样返回它的退出码，转换层随进程结束。
+On process structure: `codex-local` *is* the shim and also the parent of Codex. Ctrl-C is
+delivered by the terminal to the whole foreground process group, so Codex receives it
+directly while the parent swallows it to avoid dying first. `kill <codex-local>` reaches only
+the parent, so the parent forwards SIGTERM to Codex. When Codex exits, the parent returns its
+exit code unchanged and the shim goes away with the process.
 
-## 8. 常见任务
+## 8. Common tasks
 
-### 换一个本地模型
+### Switch to another local model
 
 ```bash
 ./bin/codex-local -m gemma-3-27b
 ```
 
-工具会检测到当前加载的不是这个模型，停掉旧实例（仅限本工具启动过的）、加载新模型、等就绪，再进 Codex。别名随文件名自动变，不需要额外指定。
+The tool notices the loaded model differs, stops the old instance (only if this tool started
+it), loads the new model, waits for readiness, then enters Codex. The alias follows the
+filename automatically; no extra flag needed.
 
-### 指定 Codex 的工作目录
+### Set Codex's working directory
 
 ```bash
 ./bin/codex-local --cd ~/code/my-project
 ```
 
-不指定时用当前目录。
+Without it, the current directory is used.
 
-### 目录不是 git 仓库
+### The directory is not a git repository
 
-Codex 的 `exec` 只在 git 仓库里运行，`~/.codex/config.toml` 里的 `[projects] trust_level = "trusted"` 不能替代这一点。提示出现时按给的命令加参数即可：
+Codex's `exec` only runs inside a git repository, and `[projects] trust_level = "trusted"` in
+`~/.codex/config.toml` does not replace that. Add the flag the hint suggests:
 
 ```bash
 ./bin/codex-local --cd ~/code/my-project exec --skip-git-repo-check "..."
 ```
 
-目录不在 git 仓库内、参数里又带 `exec`、且没写 `--skip-git-repo-check` 时，工具会在启动前提示一次。
+When the directory is not inside a git repository, the arguments contain `exec` and
+`--skip-git-repo-check` is missing, the tool prints that hint once before starting.
 
-### 用完就关掉模型
+### Shut the model down when you are done
 
 ```bash
 ./bin/codex-local --stop-after
 ```
 
-默认 Codex 退出后 llama.cpp 继续在后台待命（加载 8GB 要几十秒，反复起停不划算），只打印停止命令。加 `--stop-after` 则只关闭「本次启动的」实例；如果这次是复用已有实例，则不会去动它。
+By default llama.cpp stays in the background after Codex exits (loading 8 GB takes tens of
+seconds, so repeated start/stop is wasteful) and the tool prints the stop command. With
+`--stop-after` it shuts down only the instance this run started; a reused instance is left
+alone.
 
-### 手动停止后台的 llama.cpp
+### Stop the background llama.cpp by hand
 
 ```bash
-kill $(cat run/llama-server.pid)    # 在仓库根目录执行
+kill $(cat run/llama-server.pid)    # run from the repository root
 ```
 
-## 9. 故障排查
+## 9. Troubleshooting
 
-| 现象 | 原因与处理 |
+| Symptom | Cause and fix |
 | --- | --- |
-| `转换层端口 8010 无法监听（可能已被占用）` | 旧转换层或别的程序占着端口。`lsof -nP -iTCP:8010 -sTCP:LISTEN` 查出来停掉，或用 `--shim-port` 换端口 |
-| `llama.cpp 未在 180 秒内就绪` | 看 `logs/llama_server.log`；模型大或磁盘慢时用 `LLAMA_WAIT=600` 放宽 |
-| `无法启动 llama-server…` | `llama-server` 不在 PATH 里，用 `LLAMA_SERVER_BIN=/path/to/llama-server` 指定 |
-| `无法启动 codex…` | `codex` 不在 PATH 里 |
-| `Not inside a trusted directory…` | 目录不是 git 仓库，加 `--skip-git-repo-check`（见上一节） |
-| `llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失` | 现有实例不是本工具启动的，工具拒绝擅自杀。手动停掉后再跑 |
-| `无法停止正在运行的 llama.cpp` | 发了 SIGTERM 但 30 秒内没退出，手动处理后重试 |
-| `… 里没有 .gguf 模型文件`，或 `找不到模型 'xxx'，而且 … 里也没有 .gguf 文件` | `models/` 是空的。把模型放进去，或用 `-m /绝对路径/xxx.gguf` |
-| `Unknown model google_gemma is used…` | Codex 没有该模型的元数据，走 fallback，不影响使用 |
-| Codex 报 `'type' of tool must be 'function'` | 说明请求没经过转换层，检查是不是绕开本工具直接连了 llama.cpp |
+| `转换层端口 8010 无法监听（可能已被占用）` | Another shim or program holds the port. Find it with `lsof -nP -iTCP:8010 -sTCP:LISTEN`, stop it, or use `--shim-port` |
+| `llama.cpp 未在 180 秒内就绪` | Check `logs/llama_server.log`; for large models or slow disks raise it with `LLAMA_WAIT=600` |
+| `无法启动 llama-server…` | `llama-server` is not on PATH; set `LLAMA_SERVER_BIN=/path/to/llama-server` |
+| `无法启动 codex…` | `codex` is not on PATH |
+| `Not inside a trusted directory…` | The directory is not a git repository; add `--skip-git-repo-check` (see above) |
+| `llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失` | The running instance was not started by this tool, so it refuses to kill it. Stop it manually and retry |
+| `无法停止正在运行的 llama.cpp` | SIGTERM was sent but it did not exit within 30 seconds; handle it manually and retry |
+| `… 里没有 .gguf 模型文件`, or `找不到模型 'xxx'，而且 … 里也没有 .gguf 文件` | `models/` is empty. Drop a model in, or pass `-m /absolute/path/xxx.gguf` |
+| `Unknown model google_gemma is used…` | Codex has no metadata for this model and falls back; harmless |
+| Codex reports `'type' of tool must be 'function'` | The request bypassed the shim — check whether something connected straight to llama.cpp |
 
-## 10. 与旧工具的关系
+## 10. Relationship to the older tools
 
-早期方案是几个独立脚本，已被 `codex-local` 取代。如果你本地还留着它们，可以不再使用：
+The earlier approach used a handful of standalone scripts; `codex-local` replaces them. If
+you still have them locally, you can stop using them:
 
-| 旧组件 | 现在的对应 |
+| Old component | Where it lives now |
 | --- | --- |
-| `llama-local` 脚本 | 工具内部直接启动 llama-server |
-| `codex-llama-ctl` 脚本 | 转换层随主进程启停，无需单独管理 |
-| `codex-llama` 二进制 | 转换层内嵌进主进程 |
-| `codex-llama-shim/`（含 Node 版） | 源码已迁到 `src/` |
+| `llama-local` script | The tool launches llama-server itself |
+| `codex-llama-ctl` script | The shim starts and stops with the main process |
+| `codex-llama` binary | The shim is embedded in the main process |
+| `codex-llama-shim/` (incl. the Node version) | Source moved to `src/` |
 
-## 11. 已知限制
+## 11. Known limitations
 
-被剔除的工具是真实代价：本地模型没有联网搜索、没有子智能体、也没有 `node_repl` / `cua_repl` 这类 MCP 工具，改文件只能走 `exec_command`（也就是 shell）。
+Dropping those tools has a real cost: the local model has no web search, no sub-agents, and
+none of the `node_repl` / `cua_repl` MCP tools. Editing files happens through `exec_command`
+(that is, the shell).
 
-性能参考（MacBook，Gemma 4 E4B Q8_0）：生成约 39 tok/s、预填约 122 tok/s，而 Codex 的系统提示约 9k tokens，所以每轮对话起步大概二三十秒。上下文按模型的 131072 计算。
+Performance reference (MacBook, Gemma 4 E4B Q8_0): about 39 tok/s generation and 122 tok/s
+prefill, while the Codex system prompt is roughly 9k tokens — so expect each turn to start
+around twenty to thirty seconds. Context is sized from the model's 131072.
 
-## 12. 许可
+## 12. License
 
-MIT License，见仓库根目录的 [LICENSE](LICENSE)。
+MIT — see [LICENSE](LICENSE) in the repository root.
