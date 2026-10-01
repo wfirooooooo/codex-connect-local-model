@@ -28,13 +28,14 @@ pub async fn run(
     }
     cmd.args(args);
 
-    let mut child = cmd.spawn().context("无法启动 codex，请确认它在 PATH 中")?;
+    let mut child = cmd.spawn().context("cannot start codex; make sure it is on PATH")?;
     let child_pid = child.id().map(|pid| pid as i32).unwrap_or(0);
 
-    // Ctrl-C 由终端发给整个前台进程组，codex 会直接收到；这里只吞掉信号，防止本进程先死。
+    // Ctrl-C is delivered by the terminal to the whole foreground process group, so codex
+    // receives it directly; swallowing it here keeps this process from dying first.
     let mut sigint = signal(SignalKind::interrupt())?;
     tokio::spawn(async move { loop { sigint.recv().await; } });
-    // `kill <codex-local>` 只发给本进程，需要手动转发给 codex。
+    // `kill <codex-local>` only reaches this process, so forward it to codex.
     let mut sigterm = signal(SignalKind::terminate())?;
     tokio::spawn(async move {
         loop {

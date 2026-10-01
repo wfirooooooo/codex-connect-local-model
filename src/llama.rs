@@ -30,37 +30,37 @@ pub struct LlamaStatus {
 pub fn resolve_model(root: &Path, arg: &str) -> Result<PathBuf> {
     let direct = Path::new(arg);
     if direct.is_file() {
-        return std::fs::canonicalize(direct).context("无法解析模型路径");
+        return std::fs::canonicalize(direct).context("cannot resolve model path");
     }
     let models = root.join("models");
     let exact = models.join(arg);
     if exact.is_file() {
-        return std::fs::canonicalize(exact).context("无法解析模型路径");
+        return std::fs::canonicalize(exact).context("cannot resolve model path");
     }
 
     let prefix = glob(&models, |name| name.starts_with(arg) && name.ends_with(".gguf"));
     match prefix.len() {
-        1 => return std::fs::canonicalize(prefix.into_iter().next().unwrap()).context("无法解析模型路径"),
-        n if n > 1 => bail!("模型简写 '{arg}' 匹配到多个文件：\n{}", format_list(prefix)),
+        1 => return std::fs::canonicalize(prefix.into_iter().next().unwrap()).context("cannot resolve model path"),
+        n if n > 1 => bail!("'{arg}' matches multiple model files:\n{}", format_list(prefix)),
         _ => {}
     }
 
     let substring = glob(&models, |name| name.contains(arg) && name.ends_with(".gguf"));
     match substring.len() {
-        1 => return std::fs::canonicalize(substring.into_iter().next().unwrap()).context("无法解析模型路径"),
-        n if n > 1 => bail!("模型简写 '{arg}' 匹配到多个文件：\n{}", format_list(substring)),
+        1 => return std::fs::canonicalize(substring.into_iter().next().unwrap()).context("cannot resolve model path"),
+        n if n > 1 => bail!("'{arg}' matches multiple model files:\n{}", format_list(substring)),
         _ => {}
     }
 
     let all = glob(&models, |name| name.ends_with(".gguf"));
     if all.is_empty() {
         bail!(
-            "找不到模型 '{arg}'，而且 {} 里也没有 .gguf 文件。",
+            "cannot find model '{arg}', and {} contains no .gguf files",
             models.display()
         );
     }
     bail!(
-        "找不到模型 '{arg}'，models/ 目录下的 .gguf：\n{}",
+        "cannot find model '{arg}'. .gguf files under models/:\n{}",
         format_list(all)
     )
 }
@@ -77,10 +77,10 @@ pub fn available_models(root: &Path) -> Vec<PathBuf> {
 pub fn list_models(root: &Path) {
     let models = available_models(root);
     if models.is_empty() {
-        println!("{} 里没有 .gguf 模型文件", root.join("models").display());
+        println!("{} contains no .gguf model files", root.join("models").display());
         return;
     }
-    println!("模型目录：{}", root.join("models").display());
+    println!("Model directory: {}", root.join("models").display());
     for (index, path) in models.iter().enumerate() {
         println!("{:>3}. {}", index + 1, path.file_name().unwrap_or_default().to_string_lossy());
     }
@@ -105,7 +105,7 @@ pub fn spawn_server(
         .create(true)
         .append(true)
         .open(log_dir.join("llama_server.log"))
-        .context("无法打开 logs/llama_server.log")?;
+        .context("cannot open logs/llama_server.log")?;
 
     let bin = std::env::var("LLAMA_SERVER_BIN").unwrap_or_else(|_| "llama-server".to_string());
     let mut cmd = Command::new(&bin);
@@ -122,13 +122,13 @@ pub fn spawn_server(
         cmd.arg("--n-gpu-layers").arg(layers.to_string());
     }
     cmd.stdin(Stdio::null())
-        .stdout(Stdio::from(log_file.try_clone().context("无法重定向输出")?))
+        .stdout(Stdio::from(log_file.try_clone().context("cannot redirect output")?))
         .stderr(Stdio::from(log_file));
     cmd.process_group(0);
 
     let child = cmd
         .spawn()
-        .with_context(|| format!("无法启动 {bin}，请确认 llama.cpp 已安装且 {bin} 在 PATH 中"))?;
+        .with_context(|| format!("cannot start {bin}; make sure llama.cpp is installed and {bin} is on PATH"))?;
     Ok(child.id())
 }
 
@@ -140,13 +140,13 @@ pub async fn wait_ready(client: &HttpClient, llama_url: &str, timeout: Duration)
         }
         if start.elapsed() > timeout {
             bail!(
-                "llama.cpp 未在 {} 秒内就绪，查看 logs/llama_server.log",
+                "llama.cpp was not ready within {}s; check logs/llama_server.log",
                 timeout.as_secs()
             );
         }
         let waited = start.elapsed().as_secs();
         if waited > 0 && waited.is_multiple_of(5) {
-            println!("  等待模型加载 {waited}s");
+            println!("  waiting for the model to load ({waited}s)");
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }

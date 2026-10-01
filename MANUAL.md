@@ -4,9 +4,6 @@
 
 Run Codex CLI against a model served by your local llama.cpp, with a single command.
 
-> Note: the tool currently prints its progress and error messages in Chinese. This manual
-> quotes the exact strings so you can search for them, and describes what each one means.
-
 ## 1. What it solves
 
 Getting "local model + Codex" running by hand takes three steps: start `llama-server`,
@@ -55,10 +52,10 @@ Not sure what is available? List first:
 It prints three stages and then hands over to Codex:
 
 ```
-[1/3] 启动 llama.cpp：google_gemma ...
-      llama.cpp 就绪（PID 3250）
-[2/3] 转换层已就绪 http://127.0.0.1:8010
-[3/3] 启动 Codex（model=google_gemma）
+[1/3] starting llama.cpp: google_gemma ...
+      llama.cpp ready (PID 3250)
+[2/3] shim ready on http://127.0.0.1:8010
+[3/3] launching Codex (model=google_gemma)
 ```
 
 From inside a project:
@@ -235,14 +232,14 @@ kill $(cat run/llama-server.pid)    # run from the repository root
 
 | Symptom | Cause and fix |
 | --- | --- |
-| `转换层端口 8010 无法监听（可能已被占用）` | Another shim or program holds the port. Find it with `lsof -nP -iTCP:8010 -sTCP:LISTEN`, stop it, or use `--shim-port` |
-| `llama.cpp 未在 180 秒内就绪` | Check `logs/llama_server.log`; for large models or slow disks raise it with `LLAMA_WAIT=600` |
-| `无法启动 llama-server…` | `llama-server` is not on PATH; set `LLAMA_SERVER_BIN=/path/to/llama-server` |
-| `无法启动 codex…` | `codex` is not on PATH |
+| `cannot bind shim port 8010 (already in use?)` | Another shim or program holds the port. Find it with `lsof -nP -iTCP:8010 -sTCP:LISTEN`, stop it, or use `--shim-port` |
+| `llama.cpp was not ready within 180s` | Check `logs/llama_server.log`; for large models or slow disks raise it with `LLAMA_WAIT=600` |
+| `cannot start llama-server…` | `llama-server` is not on PATH; set `LLAMA_SERVER_BIN=/path/to/llama-server` |
+| `cannot start codex…` | `codex` is not on PATH |
 | `Not inside a trusted directory…` | The directory is not a git repository; add `--skip-git-repo-check` (see above) |
-| `llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失` | The running instance was not started by this tool, so it refuses to kill it. Stop it manually and retry |
-| `无法停止正在运行的 llama.cpp` | SIGTERM was sent but it did not exit within 30 seconds; handle it manually and retry |
-| `… 里没有 .gguf 模型文件`, or `找不到模型 'xxx'，而且 … 里也没有 .gguf 文件` | `models/` is empty. Drop a model in, or pass `-m /absolute/path/xxx.gguf` |
+| `llama.cpp is running with a different model and the pid file is missing` | The running instance was not started by this tool, so it refuses to kill it. Stop it manually and retry |
+| `could not stop the running llama.cpp` | SIGTERM was sent but it did not exit within 30 seconds; handle it manually and retry |
+| `no .gguf model files in …`, or `cannot find model 'xxx', and … contains no .gguf files` | `models/` is empty. Drop a model in, or pass `-m /absolute/path/xxx.gguf` |
 | `Unknown model google_gemma is used…` | Codex has no metadata for this model and falls back; harmless |
 | Codex reports `'type' of tool must be 'function'` | The request bypassed the shim — check whether something connected straight to llama.cpp |
 

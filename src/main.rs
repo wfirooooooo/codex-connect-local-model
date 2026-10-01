@@ -20,45 +20,49 @@ use tokio::net::TcpListener;
 pub type HttpClient = Client<HttpConnector, Full<Bytes>>;
 
 #[derive(Parser)]
-#[command(name = "codex-local", version, about = "一键启动 llama.cpp + 转换层 + Codex（本地模型）")]
+#[command(
+    name = "codex-local",
+    version,
+    about = "Start llama.cpp, an in-process shim and Codex against a local model"
+)]
 struct Cli {
-    /// 模型：路径、文件名或简写（在 <root>/models 下搜索 .gguf）。不指定则列出可选模型
+    /// Model: path, filename or shorthand (searched under <root>/models for .gguf). Lists available models when omitted
     #[arg(short, long)]
     model: Option<String>,
 
-    /// llama.cpp 模型别名（默认取文件名第一个 '-' 之前）
+    /// llama.cpp model alias (default: the model filename up to the first '-')
     #[arg(long)]
     alias: Option<String>,
 
-    /// llama.cpp 端口
+    /// Port for llama.cpp to listen on
     #[arg(long, default_value_t = 8001)]
     llama_port: u16,
 
-    /// 转换层端口
+    /// Port for the in-process shim to listen on
     #[arg(long, default_value_t = 8010)]
     shim_port: u16,
 
-    /// 让 Codex 以该目录作为工作根（映射到 codex 的 -C）
+    /// Working root for Codex (maps to codex's -C)
     #[arg(long, value_name = "DIR")]
     cd: Option<PathBuf>,
 
-    /// 透传给 llama-server（仅本次启动时生效）
+    /// Forwarded to llama-server (only when this run starts it)
     #[arg(long)]
     ctx_size: Option<u32>,
 
-    /// 透传给 llama-server（仅本次启动时生效）
+    /// Forwarded to llama-server (only when this run starts it)
     #[arg(long)]
     n_gpu_layers: Option<i32>,
 
-    /// Codex 退出后关闭本次启动的 llama.cpp
+    /// Stop the llama.cpp started by this run when Codex exits
     #[arg(long)]
     stop_after: bool,
 
-    /// 列出可用模型并退出
+    /// List available models and exit
     #[arg(short, long)]
     list: bool,
 
-    /// 转发给 codex 的参数（首个位置参数开始）
+    /// Arguments forwarded to codex (starting at the first positional argument)
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     codex_args: Vec<OsString>,
 }
@@ -76,9 +80,9 @@ async fn main() -> Result<()> {
     let work_dir = match &cli.cd {
         Some(dir) => {
             let dir = std::fs::canonicalize(dir)
-                .with_context(|| format!("--cd 目录不存在：{}", dir.display()))?;
+                .with_context(|| format!("--cd directory does not exist: {}", dir.display()))?;
             if !dir.is_dir() {
-                bail!("--cd 不是目录：{}", dir.display());
+                bail!("--cd is not a directory: {}", dir.display());
             }
             warn_if_untrusted(&dir, &cli.codex_args);
             Some(dir)
@@ -98,11 +102,11 @@ async fn main() -> Result<()> {
             let dir = root.join("models");
             if models.is_empty() {
                 bail!(
-                    "{} 里没有 .gguf 模型文件。把模型放进去，或用 -m 指定任意路径的 .gguf。",
+                    "no .gguf model files in {}. Add one there, or point -m at any .gguf path.",
                     dir.display()
                 );
             }
-            println!("未指定模型，{} 下可用：", dir.display());
+            println!("No model specified; available under {}:", dir.display());
             for (index, path) in models.iter().enumerate() {
                 println!(
                     "{:>3}. {}",
@@ -112,7 +116,7 @@ async fn main() -> Result<()> {
             }
             let example = models[0].file_name().unwrap_or_default().to_string_lossy().to_string();
             println!();
-            println!("用 -m 指定，例如：codex-local -m {example}");
+            println!("Pick one with -m, for example: codex-local -m {example}");
             std::process::exit(1);
         }
     };
@@ -133,27 +137,31 @@ async fn main() -> Result<()> {
     let (started, pid) =
         ensure_llama(&client, &root, &llama_url, &model_path, &alias, &launch).await?;
 
-    // [2/3] 进程内转换层
+    // [2/3] in-process shim
     let addr = SocketAddr::from(([127, 0, 0, 1], cli.shim_port));
     let listener = TcpListener::bind(addr)
         .await
-        .with_context(|| format!("转换层端口 {} 无法监听（可能已被占用）", cli.shim_port))?;
-    let upstream: Uri = format!("{llama_url}/").parse().context("无效的上游地址")?;
+        .with_context(|| format!("cannot bind shim port {} (already in use?)", cli.shim_port))?;
+    let upstream: Uri = format!("{llama_url}/").parse().context("invalid upstream URL")?;
     let shim_log = root.join("logs").join("shim.log");
     tokio::spawn(shim::serve(listener, upstream, client.clone(), Some(shim_log)));
-    println!("[2/3] 转换层已就绪 http://127.0.0.1:{}", cli.shim_port);
+    println!("[2/3] shim ready on http://127.0.0.1:{}", cli.shim_port);
 
     // [3/3] Codex
-    println!("[3/3] 启动 Codex（model={alias}）");
+    println!("[3/3] launching Codex (model={alias})");
     let code = codex::run(cli.shim_port, &alias, work_dir, cli.codex_args).await?;
 
     if cli.stop_after {
         if let Some(pid) = pid {
             llama::terminate(pid);
-            println!("已停止本次启动的 llama.cpp（PID {pid}）");
+            println!("Stopped the llama.cpp started by this run (PID {pid})");
         }
     } else if started {
-        println!("llama.cpp 仍在后台运行（PID {}），停止：kill $(cat {}/run/llama-server.pid)", pid.unwrap_or(0), root.display());
+        println!(
+            "llama.cpp is still running in the background (PID {}); stop it with: kill $(cat {}/run/llama-server.pid)",
+            pid.unwrap_or(0),
+            root.display()
+        );
     }
 
     std::process::exit(code);
@@ -172,19 +180,21 @@ async fn ensure_llama(
 
     if st.up {
         if st.model_path.as_deref() == Some(expected.as_str()) {
-            println!("[1/3] llama.cpp 已加载 {alias}");
+            println!("[1/3] llama.cpp already loaded {alias}");
             return Ok((false, None));
         }
         let Some(pid) = llama::read_pid(root) else {
-            bail!("llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失，请先手动停止它再试");
+            bail!(
+                "llama.cpp is running with a different model and the pid file is missing; stop it manually and retry"
+            );
         };
-        println!("[1/3] llama.cpp 已加载其它模型，重启为 {alias} ...");
+        println!("[1/3] llama.cpp has a different model loaded; restarting with {alias} ...");
         llama::terminate(pid);
         if !wait_down(client, llama_url).await {
-            bail!("无法停止正在运行的 llama.cpp，请手动停止后再试");
+            bail!("could not stop the running llama.cpp; stop it manually and retry");
         }
     } else {
-        println!("[1/3] 启动 llama.cpp：{alias} ...");
+        println!("[1/3] starting llama.cpp: {alias} ...");
     }
 
     let pid = llama::spawn_server(
@@ -200,7 +210,7 @@ async fn ensure_llama(
         .map(Duration::from_secs)
         .unwrap_or(Duration::from_secs(180));
     llama::wait_ready(client, llama_url, timeout).await?;
-    println!("      llama.cpp 就绪（PID {pid}）");
+    println!("      llama.cpp ready (PID {pid})");
 
     Ok((true, Some(pid)))
 }
@@ -215,7 +225,7 @@ async fn wait_down(client: &HttpClient, llama_url: &str) -> bool {
     false
 }
 
-/// `codex exec` 只肯在 git 仓库里跑，除非显式给 --skip-git-repo-check。
+/// `codex exec` only runs inside a git repository unless --skip-git-repo-check is passed.
 fn warn_if_untrusted(dir: &Path, codex_args: &[OsString]) {
     let is_exec = codex_args.iter().any(|arg| arg == "exec");
     let opted_out = codex_args.iter().any(|arg| arg == "--skip-git-repo-check");
@@ -223,7 +233,7 @@ fn warn_if_untrusted(dir: &Path, codex_args: &[OsString]) {
 
     if is_exec && !opted_out && !in_git_repo {
         eprintln!(
-            "提示：{} 不是 git 仓库，codex exec 需要 --skip-git-repo-check，例如：\n  codex-local --cd {} exec --skip-git-repo-check \"...\"",
+            "Note: {} is not a git repository; codex exec needs --skip-git-repo-check, for example:\n  codex-local --cd {} exec --skip-git-repo-check \"...\"",
             dir.display(),
             dir.display()
         );

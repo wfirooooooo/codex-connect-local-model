@@ -42,10 +42,10 @@ cp target/release/codex-local bin/
 它会依次输出三个阶段，然后进入 Codex 交互界面：
 
 ```
-[1/3] 启动 llama.cpp：google_gemma ...
-      llama.cpp 就绪（PID 3250）
-[2/3] 转换层已就绪 http://127.0.0.1:8010
-[3/3] 启动 Codex（model=google_gemma）
+[1/3] starting llama.cpp: google_gemma ...
+      llama.cpp ready (PID 3250)
+[2/3] shim ready on http://127.0.0.1:8010
+[3/3] launching Codex (model=google_gemma)
 ```
 
 在项目目录里用：
@@ -195,14 +195,14 @@ kill $(cat run/llama-server.pid)    # 在仓库根目录执行
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| `转换层端口 8010 无法监听（可能已被占用）` | 旧转换层或别的程序占着端口。`lsof -nP -iTCP:8010 -sTCP:LISTEN` 查出来停掉，或用 `--shim-port` 换端口 |
-| `llama.cpp 未在 180 秒内就绪` | 看 `logs/llama_server.log`；模型大或磁盘慢时用 `LLAMA_WAIT=600` 放宽 |
-| `无法启动 llama-server…` | `llama-server` 不在 PATH 里，用 `LLAMA_SERVER_BIN=/path/to/llama-server` 指定 |
-| `无法启动 codex…` | `codex` 不在 PATH 里 |
+| `cannot bind shim port 8010 (already in use?)` | 旧转换层或别的程序占着端口。`lsof -nP -iTCP:8010 -sTCP:LISTEN` 查出来停掉，或用 `--shim-port` 换端口 |
+| `llama.cpp was not ready within 180s` | 看 `logs/llama_server.log`；模型大或磁盘慢时用 `LLAMA_WAIT=600` 放宽 |
+| `cannot start llama-server…` | `llama-server` 不在 PATH 里，用 `LLAMA_SERVER_BIN=/path/to/llama-server` 指定 |
+| `cannot start codex…` | `codex` 不在 PATH 里 |
 | `Not inside a trusted directory…` | 目录不是 git 仓库，加 `--skip-git-repo-check`（见上一节） |
-| `llama.cpp 正在运行但加载的是其它模型，且 pid 文件缺失` | 现有实例不是本工具启动的，工具拒绝擅自杀。手动停掉后再跑 |
-| `无法停止正在运行的 llama.cpp` | 发了 SIGTERM 但 30 秒内没退出，手动处理后重试 |
-| `… 里没有 .gguf 模型文件`，或 `找不到模型 'xxx'，而且 … 里也没有 .gguf 文件` | `models/` 是空的。把模型放进去，或用 `-m /绝对路径/xxx.gguf` |
+| `llama.cpp is running with a different model and the pid file is missing` | 现有实例不是本工具启动的，工具拒绝擅自杀。手动停掉后再跑 |
+| `could not stop the running llama.cpp` | 发了 SIGTERM 但 30 秒内没退出，手动处理后重试 |
+| `no .gguf model files in …`，或 `cannot find model 'xxx', and … contains no .gguf files` | `models/` 是空的。把模型放进去，或用 `-m /绝对路径/xxx.gguf` |
 | `Unknown model google_gemma is used…` | Codex 没有该模型的元数据，走 fallback，不影响使用 |
 | Codex 报 `'type' of tool must be 'function'` | 说明请求没经过转换层，检查是不是绕开本工具直接连了 llama.cpp |
 
