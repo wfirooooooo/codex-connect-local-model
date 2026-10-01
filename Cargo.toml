@@ -1,0 +1,20 @@
+[package]
+name = "codex-local"
+version = "0.1.0"
+edition = "2024"
+description = "One command to start llama.cpp + an in-process shim + Codex against a local model"
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "tokio"] }
+libc = "0.2"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "signal"] }
+
+[profile.release]
+strip = true
+lto = true

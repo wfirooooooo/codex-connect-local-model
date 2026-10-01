@@ -1,0 +1,5 @@
+/target/
+/bin/codex-local
+*.log
+/run/
+/models/*.gguf
