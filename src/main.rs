@@ -176,7 +176,23 @@ async fn ensure_llama(
     launch: &llama::LaunchConfig,
 ) -> Result<(bool, Option<u32>)> {
     let expected = model_path.to_string_lossy().to_string();
-    let st = llama::status(client, llama_url).await;
+    let timeout = std::env::var("LLAMA_WAIT")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(180));
+
+    let mut st = llama::status(client, llama_url).await;
+
+    // llama.cpp binds the port before the weights are loaded and answers 503
+    // ("Loading model") until it is ready, so a bound-but-unready port means a
+    // load is already under way. Wait it out instead of starting a second
+    // server that could not bind the port anyway.
+    if !st.up && st.responding {
+        println!("[1/3] llama.cpp is still starting; waiting for it to become ready ...");
+        llama::wait_ready(client, llama_url, timeout).await?;
+        st = llama::status(client, llama_url).await;
+    }
 
     if st.up {
         if st.model_path.as_deref() == Some(expected.as_str()) {
@@ -204,11 +220,6 @@ async fn ensure_llama(
     )?;
     llama::write_pid(root, pid);
 
-    let timeout = std::env::var("LLAMA_WAIT")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .map(Duration::from_secs)
-        .unwrap_or(Duration::from_secs(180));
     llama::wait_ready(client, llama_url, timeout).await?;
     println!("      llama.cpp ready (PID {pid})");
 

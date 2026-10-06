@@ -23,8 +23,20 @@ pub struct LaunchConfig {
 }
 
 pub struct LlamaStatus {
+    /// The server answered `/props` successfully, so a model is loaded.
     pub up: bool,
+    /// The server answered at all, even if only with an error (llama.cpp replies
+    /// 503 "Loading model" once it has bound the port but is still loading).
+    pub responding: bool,
     pub model_path: Option<String>,
+}
+
+enum Fetch {
+    Json(Value),
+    /// The server answered, but not with a success status.
+    Unavailable,
+    /// No usable response: refused, timed out, or not JSON.
+    Unreachable,
 }
 
 pub fn resolve_model(root: &Path, arg: &str) -> Result<PathBuf> {
@@ -87,11 +99,14 @@ pub fn list_models(root: &Path) {
 }
 
 pub async fn status(client: &HttpClient, llama_url: &str) -> LlamaStatus {
-    if let Some(props) = fetch_json(client, &format!("{llama_url}/props")).await {
-        let model_path = props.get("model_path").and_then(|v| v.as_str()).map(String::from);
-        return LlamaStatus { up: true, model_path };
+    match fetch_json(client, &format!("{llama_url}/props")).await {
+        Fetch::Json(props) => {
+            let model_path = props.get("model_path").and_then(|v| v.as_str()).map(String::from);
+            LlamaStatus { up: true, responding: true, model_path }
+        }
+        Fetch::Unavailable => LlamaStatus { up: false, responding: true, model_path: None },
+        Fetch::Unreachable => LlamaStatus { up: false, responding: false, model_path: None },
     }
-    LlamaStatus { up: false, model_path: None }
 }
 
 pub fn spawn_server(
@@ -135,7 +150,7 @@ pub fn spawn_server(
 pub async fn wait_ready(client: &HttpClient, llama_url: &str, timeout: Duration) -> Result<()> {
     let start = Instant::now();
     loop {
-        if fetch_json(client, &format!("{llama_url}/v1/models")).await.is_some() {
+        if matches!(fetch_json(client, &format!("{llama_url}/v1/models")).await, Fetch::Json(_)) {
             return Ok(());
         }
         if start.elapsed() > timeout {
@@ -170,16 +185,32 @@ pub fn terminate(pid: u32) {
     unsafe { libc::kill(pid as i32, libc::SIGTERM) };
 }
 
-async fn fetch_json(client: &HttpClient, url: &str) -> Option<Value> {
-    let uri: Uri = url.parse().ok()?;
-    let request = Request::builder()
+async fn fetch_json(client: &HttpClient, url: &str) -> Fetch {
+    let Ok(uri) = url.parse::<Uri>() else {
+        return Fetch::Unreachable;
+    };
+    let Ok(request) = Request::builder()
         .method("GET")
         .uri(uri)
         .body(Full::new(Bytes::new()))
-        .ok()?;
-    let response = client.request(request).await.ok()?;
-    let body = response.into_body().collect().await.ok()?.to_bytes();
-    serde_json::from_slice(&body).ok()
+    else {
+        return Fetch::Unreachable;
+    };
+    let Ok(response) = client.request(request).await else {
+        return Fetch::Unreachable;
+    };
+    // llama.cpp answers 503 with a JSON error body while the model is loading,
+    // so a parseable body alone does not mean the server is ready.
+    if !response.status().is_success() {
+        return Fetch::Unavailable;
+    }
+    let Ok(body) = response.into_body().collect().await else {
+        return Fetch::Unreachable;
+    };
+    match serde_json::from_slice(&body.to_bytes()) {
+        Ok(value) => Fetch::Json(value),
+        Err(_) => Fetch::Unreachable,
+    }
 }
 
 fn glob(root: &Path, predicate: impl Fn(&str) -> bool) -> Vec<PathBuf> {
